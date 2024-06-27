@@ -8,14 +8,14 @@
 #include "Secrets.h"
 
 /* Secrets.h file should contain data as below: */
-#ifndef WIFI_SSID
-#define WIFI_SSID "xxxxxxxxxx"
-#define WIFI_PASSWORD "xxxxxxxxxx"
-#define TOKEN "cloudflare-api-token" // API token from https://dash.cloudflare.com/profile/api-tokens [All zones - Zone:Read, DNS:Edit]
-#define DOMAIN "example.com" // domain name (without subdomain)
-#define SUBDOMAIN "hello" // subdomain in: hello.example.com
-#define NOTIFY_URL "https://hooks.slack.com/services/TMVF27R8B/BN0K5BWAD/xxxxxxxxxxxxx" // Slack webhook notify url
-#endif
+// #ifndef WIFI_SSID
+// #define WIFI_SSID "xxxxxxxxxx"
+// #define WIFI_PASSWORD "xxxxxxxxxx"
+// #define TOKEN "cloudflare-api-token" // API token from https://dash.cloudflare.com/profile/api-tokens [All zones - Zone:Read, DNS:Edit]
+// #define DOMAIN "example.com" // domain name (without subdomain)
+// #define SUBDOMAIN "hello" // subdomain in: hello.example.com
+// #define NOTIFY_URL "" // Slack or Discord webhook notify url
+// #endif
 
 /* Configurable variables */
 #define SERVER_PORT 80
@@ -54,9 +54,9 @@ void setup() {
   setupTime();
   server.on("/", []() {
     server.send(200, "text/html", \
-      "<a href=\"/log\">/log</a><br>" \
-      "<a href=\"/checkdns\">/checkdns</a><br>" \
-      "<a href=\"/reboot\">/reboot</a><br>" \
+      "<a href=\"/log\">/log</a><br>"\
+      "<a href=\"/checkdns\">/checkdns</a><br>"\
+      "<a href=\"/reboot\">/reboot</a><br>"\
       "<br><p><small>"\
       "Powered by: <a href=\"https://github.com/ameer1234567890/Arduino-Cloudflare-DDNS-Client\">Arduino-Cloudflare-DDNS-Client</a> | "\
       "Chip ID: " + String(ESP.getChipId()) + " | " + \
@@ -81,7 +81,6 @@ void setup() {
   ArduinoOTA.setHostname(OTA_HOSTNAME);
   ArduinoOTA.begin();
 }
-
 
 void loop() {
   if (zoneID == "") {
@@ -126,23 +125,22 @@ void loop() {
   ArduinoOTA.handle();
 
   switch (TelnetStream2.read()) {
-    case 'R':
-      TelnetStream2.println("Rebooting device");
-      TelnetStream2.stop();
-      delay(100);
-      ESP.restart();
-      break;
-    case 'C':
-      TelnetStream2.println("Closing telnet connection");
-      TelnetStream2.flush();
-      TelnetStream2.stop();
-      break;
-    case 'D':
-      runProc();
-      break;
+  case 'R':
+    TelnetStream2.println("Rebooting device");
+    TelnetStream2.stop();
+    delay(100);
+    ESP.restart();
+    break;
+  case 'C':
+    TelnetStream2.println("Closing telnet connection");
+    TelnetStream2.flush();
+    TelnetStream2.stop();
+    break;
+  case 'D':
+    runProc();
+    break;
   }
 }
-
 
 void runProc() {
   lastMillis = millis();
@@ -159,7 +157,6 @@ void runProc() {
   }
 }
 
-
 void log(String msg) {
   if (!lineFeed) {
     lineFeed = true;
@@ -168,7 +165,7 @@ void log(String msg) {
     TelnetStream2.println();
   }
   time_t now = time(0);
-  logTime = ctime(&now);
+  logTime = ctime( & now);
   logTime.trim();
   TelnetStream2.println("[" + logTime + "] " + msg);
   logMsg = logMsg + "[" + logTime + "] ";
@@ -176,12 +173,11 @@ void log(String msg) {
   Serial.println(msg);
 }
 
-
 void logContinuous(String msg, String progressChar) {
   if (lineFeed) {
     lineFeed = false;
     time_t now = time(0);
-    logTime = ctime(&now);
+    logTime = ctime( & now);
     logTime.trim();
     logMsg = logMsg + "[" + logTime + "] ";
     logMsg = logMsg + msg + progressChar;
@@ -194,7 +190,6 @@ void logContinuous(String msg, String progressChar) {
   }
 }
 
-
 void setupTime() {
   configTime(TIMEZONE * 3600, DST, "pool.ntp.org", "time.nist.gov", "time.google.com");
   log("I/time  : waiting for time");
@@ -202,12 +197,19 @@ void setupTime() {
     delay(100);
   }
   delay(100);
-  time_t now = time(0);
-  logTime = ctime(&now);
+  time_t now = time(0);  
+  logTime = ctime( & now);
   logTime.trim();
+  
   log("I/time  : time obtained via NTP => " + logTime);
+  struct tm *timeinfo = localtime(&now);
+  int year = timeinfo->tm_year + 1900; // tm_year is years since 1900
+  
+  if(year < 2024){
+    log("E/setupTime: retry ntp");
+    return setupTime();
+  }
 }
-
 
 void checkDNS() {
   WiFiClient wClient;
@@ -248,9 +250,8 @@ void checkDNS() {
   wClient.stop();
 }
 
-
 void updateDNS() {
-  String reqData = "{\"type\":\"A\",\"name\":\"" + String(SUBDOMAIN) + "\",\"content\":\"" + newIP + "\",\"ttl\":\"1\",\"proxied\":false}";
+  String reqData = "{\"type\":\"A\",\"name\":\"" + String(SUBDOMAIN) + "\",\"content\":\"" + newIP + "\",\"ttl\":1,\"proxied\":false}";
   String url = "https://api.cloudflare.com/client/v4/zones/" + zoneID + "/dns_records/" + recID;
   String host = url.substring(url.indexOf("https://") + 8, url.indexOf("/", url.indexOf("https://") + 8));
   String path = url.substring(url.indexOf(host) + host.length(), url.length());
@@ -277,10 +278,10 @@ void updateDNS() {
     } else {
       lastError = "HTTP status code => " + String(httpCode) + ". HTTP response => " + httpResponse;
       log("E/updatr: " + lastError);
+      notify(lastError);
     }
   }
 }
-
 
 bool getZoneID() {
   String url = "https://api.cloudflare.com/client/v4/zones?name=" + String(DOMAIN);
@@ -311,7 +312,6 @@ bool getZoneID() {
   }
 }
 
-
 bool getRecID() {
   String url = "https://api.cloudflare.com/client/v4/zones/" + zoneID + "/dns_records?name=" + String(SUBDOMAIN) + "." + String(DOMAIN);
   String host = url.substring(url.indexOf("https://") + 8, url.indexOf("/", url.indexOf("https://") + 8));
@@ -326,7 +326,7 @@ bool getRecID() {
   http.end();
   wClientSecure.stop();
   if (httpCode == HTTP_CODE_OK && httpResponse != "") {
-    int recIndex = httpResponse.indexOf("\"name\":\"" + String(SUBDOMAIN) +"." + String(DOMAIN) + "\",\"type\":\"A\",");
+    int recIndex = httpResponse.indexOf("\"name\":\"" + String(SUBDOMAIN) + "." + String(DOMAIN) + "\",\"type\":\"A\",");
     int startIndex = httpResponse.substring(0, recIndex).lastIndexOf("\"id\"") - 4;
     int endIndex = httpResponse.indexOf("}", recIndex) + 2;
     httpResponse = httpResponse.substring(startIndex, endIndex);
@@ -349,67 +349,105 @@ bool getRecID() {
   }
 }
 
-
-void notify(String message) {
-  String reqData = "{\"channel\": \"#general\", \"username\": \"DDNSClient\", \"text\": \"" + message + "\", \"icon_emoji\": \":slack:\"}";
-  String url = String(NOTIFY_URL);
-  String host = url.substring(url.indexOf("https://") + 8, url.indexOf("/", url.indexOf("https://") + 8));
-  String path = url.substring(url.indexOf(host) + host.length(), url.length());
-  WiFiClientSecure wClientSecure;
-  wClientSecure.setInsecure(); // until we have better handling of a trust chain on small devices
-  http.begin(wClientSecure, host, 443, path, true);
-  int httpCode = http.POST(reqData);
-  String httpResponse = http.getString();
-  http.end();
-  wClientSecure.stop();
-  httpResponse.replace("\n", "");
-  if (httpCode == HTTP_CODE_OK) {
-    log("I/notify: HTTP status code => " + String(httpCode) + ". HTTP response => " + httpResponse);
-  } else {
-    if (httpCode < 0) {
-      lastError = "HTTP error code => " + String(httpCode) + ". HTTP error => " + http.errorToString(httpCode);
-      log("E/notify: " + lastError);
-    } else {
-      lastError = "HTTP status code => " + String(httpCode) + ". HTTP response => " + httpResponse;
-      log("E/notify: " + lastError);
-    }
-  }
+String escapeJson(String message) {
+  message.replace("\\", "\\\\");
+  message.replace("\"", "\\\"");
+  message.replace("\n", "\\n");
+  message.replace("\r", "\\r");
+  message.replace("\t", "\\t");
+  return message;
 }
 
+void notify(String message) {
+  String url = String(NOTIFY_URL);
+  if (url.indexOf("hooks.slack.com") > 0) {
+    String reqData = "{\"channel\": \"#general\", \"username\": \"DDNSClient\", \"text\": \"" + message + "\", \"icon_emoji\": \":slack:\"}";
+    String url = String(NOTIFY_URL);
+    String host = url.substring(url.indexOf("https://") + 8, url.indexOf("/", url.indexOf("https://") + 8));
+    String path = url.substring(url.indexOf(host) + host.length(), url.length());
+    WiFiClientSecure wClientSecure;
+    wClientSecure.setInsecure(); // until we have better handling of a trust chain on small devices
+    http.begin(wClientSecure, host, 443, path, true);
+    int httpCode = http.POST(reqData);
+    String httpResponse = http.getString();
+    http.end();
+    wClientSecure.stop();
+    httpResponse.replace("\n", "");
+    if (httpCode == HTTP_CODE_OK) {
+      log("I/notify: HTTP status code => " + String(httpCode) + ". HTTP response => " + httpResponse);
+    } else {
+      if (httpCode < 0) {
+        lastError = "HTTP error code => " + String(httpCode) + ". HTTP error => " + http.errorToString(httpCode);
+        log("E/notify: " + lastError);
+      } else {
+        lastError = "HTTP status code => " + String(httpCode) + ". HTTP response => " + httpResponse;
+        log("E/notify: " + lastError);
+      }
+    }
+  }
+  else if (url.indexOf("discord.com") > 0) {
+    String reqData = "{\"content\": \"" + escapeJson(message) + "\"}";
+    log(reqData);
+    String host = url.substring(url.indexOf("https://") + 8, url.indexOf("/", url.indexOf("https://") + 8));
+    String path = url.substring(url.indexOf(host) + host.length(), url.length());
+    WiFiClientSecure wClientSecure;
+    wClientSecure.setInsecure(); // until we have better handling of a trust chain on small devices
+    http.begin(wClientSecure, host, 443, path, true);
+    http.addHeader("Content-Type", "application/json");
+    int httpCode = http.POST(reqData);
+    String httpResponse = http.getString();
+    http.end();
+    wClientSecure.stop();
+    httpResponse.replace("\n", "");
+    if (httpCode == HTTP_CODE_OK) {
+      log("I/notify: HTTP status code => " + String(httpCode) + ". HTTP response => " + httpResponse);
+    } else {
+      if (httpCode < 0) {
+        lastError = "HTTP error code => " + String(httpCode) + ". HTTP error => " + http.errorToString(httpCode);
+        log("E/notify: " + lastError);
+      } else {
+        lastError = "HTTP status code => " + String(httpCode) + ". HTTP response => " + httpResponse;
+        log("E/notify: " + lastError);
+      }
+    }     
+  } else {
+    log("E/notify: no webhooks setup");
+  }   
+}
 
 bool isValidIPAddress(String ip) {
   int firstDot = ip.indexOf(".");
-  if(firstDot == -1) {
+  if (firstDot == -1) {
     return false;
   } else {
     if (!isValidNumber(ip.substring(0, firstDot))) {
       return false;
     } else {
-      if(ip.substring(0, firstDot).toInt() > 255) {
+      if (ip.substring(0, firstDot).toInt() > 255) {
         return false;
       }
     }
   }
   int secondDot = ip.indexOf(".", firstDot + 1);
-  if(secondDot == -1) {
+  if (secondDot == -1) {
     return false;
   } else {
     if (!isValidNumber(ip.substring(firstDot + 1, secondDot))) {
       return false;
     } else {
-      if(ip.substring(firstDot + 1, secondDot).toInt() > 255) {
+      if (ip.substring(firstDot + 1, secondDot).toInt() > 255) {
         return false;
       }
     }
   }
   int thirdDot = ip.indexOf(".", secondDot + 1);
-  if(thirdDot == -1) {
+  if (thirdDot == -1) {
     return false;
   } else {
     if (!isValidNumber(ip.substring(secondDot + 1, thirdDot))) {
       return false;
     } else {
-      if(ip.substring(secondDot + 1, thirdDot).toInt() > 255) {
+      if (ip.substring(secondDot + 1, thirdDot).toInt() > 255) {
         return false;
       }
     }
@@ -417,22 +455,20 @@ bool isValidIPAddress(String ip) {
   if (!isValidNumber(ip.substring(thirdDot + 1, ip.length()))) {
     return false;
   } else {
-    if(ip.substring(thirdDot + 1, ip.length()).toInt() > 255) {
+    if (ip.substring(thirdDot + 1, ip.length()).toInt() > 255) {
       return false;
     }
   }
   return true;
 }
 
-
-boolean isValidNumber(String str){
+boolean isValidNumber(String str) {
   if (String(str.toInt()) == str) {
     return true;
   } else {
     return false;
   }
-} 
-
+}
 
 bool isLocalIP(String ip) {
   // This function complements isValidIPAddress() function, and as such, does not validate IP addresses.
@@ -447,7 +483,6 @@ bool isLocalIP(String ip) {
   if (firstOctet == 100 && secondOctet > 63 && secondOctet < 128) return true;
   return false;
 }
-
 
 void setupWifi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
